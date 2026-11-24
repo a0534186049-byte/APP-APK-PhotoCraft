@@ -7,7 +7,7 @@ on:
         description: "Release publishes the signed APK to the fixed GitHub Release; debug is for testing only"
         required: true
         type: choice
-        default: release
+        default: debug
         options:
           - debug
           - release
@@ -23,14 +23,11 @@ permissions:
 
 jobs:
   android:
-    uses: a0534186049-byte/ArtCraft-Android-Common/.github/workflows/build-android-app.yml@d01a4148acb980662e4e77abbf06530161e2f7a2
+    uses: a0534186049-byte/ArtCraft-Android-Common/.github/workflows/build-android-app.yml@031af13f6ed8ae4792f58ac4ccb27f299a87cff4
     with:
       app: photocraft
-      common_ref: d01a4148acb980662e4e77abbf06530161e2f7a2
+      common_ref: 031af13f6ed8ae4792f58ac4ccb27f299a87cff4
       source_version: stable
-      build_mode: ${{ inputs.build_mode || 'release' }}
+      build_mode: ${{ inputs.build_mode || 'debug' }}
       builder_ref: 2a03bb11c4d08e8ca3a5c96dc9fd942cbe7c29a9
-    secrets:
-      ARTCRAFT_SIGNING_KEYSTORE_BASE64: ${{ secrets.ARTCRAFT_SIGNING_KEYSTORE_BASE64 }}
-      ARTCRAFT_SIGNING_PASSWORD: ${{ secrets.ARTCRAFT_SIGNING_PASSWORD }}
-      ARTCRAFT_EXPECTED_CERT_SHA256: ${{ secrets.ARTCRAFT_EXPECTED_CERT_SHA256 }}
+    secrets: inherit

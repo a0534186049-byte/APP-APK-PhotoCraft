@@ -17,12 +17,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: photocraft-android-${${ github.ref }}
+  group: photocraft-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build PhotoCraft ( ${${ inputs.build_mode || 'debug' }} )
+    name: Build PhotoCraft ( ${{ inputs.build_mode || 'debug' }} )
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -162,8 +162,8 @@ jobs:
       - name: Restore PhotoCraft permanent signing key
         if: inputs.build_mode == 'release'
         env:
-          KEYSTORE_B64: ${${ secrets.ARTCRAFT_SIGNING_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD_INPUT: ${${ secrets.ARTCRAFT_SIGNING_PASSWORD }}
+          KEYSTORE_B64: ${{ secrets.ARTCRAFT_SIGNING_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD_INPUT: ${{ secrets.ARTCRAFT_SIGNING_PASSWORD }}
         run: |
           set -Eeuo pipefail
           [[ -n "$KEYSTORE_B64" && -n "$KEYSTORE_PASSWORD_INPUT" ]] || {
@@ -181,7 +181,7 @@ jobs:
 
       - name: Build Android APK
         env:
-          BUILD_MODE: ${${ inputs.build_mode || 'debug' }}
+          BUILD_MODE: ${{ inputs.build_mode || 'debug' }}
         run: |
           set -Eeuo pipefail
           [[ "$BUILD_MODE" == "debug" || "$BUILD_MODE" == "release" ]] || exit 2
@@ -199,8 +199,8 @@ jobs:
       - name: Verify package, signature, integrity and Hebrew catalog
         id: verify
         env:
-          BUILD_MODE: ${${ inputs.build_mode || 'debug' }}
-          EXPECTED_CERT: ${${ secrets.ARTCRAFT_EXPECTED_CERT_SHA256 }}
+          BUILD_MODE: ${{ inputs.build_mode || 'debug' }}
+          EXPECTED_CERT: ${{ secrets.ARTCRAFT_EXPECTED_CERT_SHA256 }}
         run: |
           set -Eeuo pipefail
           shopt -s nullglob
@@ -238,9 +238,9 @@ jobs:
       - name: Upload APK backup Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: photocraft-${${ inputs.build_mode || 'debug' }}-apk-backup
+          name: photocraft-${{ inputs.build_mode || 'debug' }}-apk-backup
           path: |
-            ${${ steps.verify.outputs.apk_path }}
+            ${{ steps.verify.outputs.apk_path }}
             logs/photocraft-hebrew-i18n-report.txt
             logs/photocraft-build.log
           if-no-files-found: error
@@ -249,8 +249,8 @@ jobs:
       - name: Create or update fixed PhotoCraft Release
         if: inputs.build_mode == 'release'
         env:
-          GH_TOKEN: ${${ github.token }}
-          ASSET_NAME: ${${ steps.verify.outputs.asset_name }}
+          GH_TOKEN: ${{ github.token }}
+          ASSET_NAME: ${{ steps.verify.outputs.asset_name }}
         run: |
           set -Eeuo pipefail
           ASSET="$GITHUB_WORKSPACE/release/$ASSET_NAME"
@@ -267,7 +267,7 @@ jobs:
       - name: Verify APK in Release Assets
         if: inputs.build_mode == 'release'
         env:
-          GH_TOKEN: ${${ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           RESPONSE="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/photocraft-latest")"

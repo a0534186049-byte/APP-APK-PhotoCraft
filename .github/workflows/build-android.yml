@@ -205,9 +205,9 @@ jobs:
           set -Eeuo pipefail
           shopt -s nullglob
           APKS=( "$GITHUB_WORKSPACE"/builder/output/photocraft-*.apk )
-          if [[ ${§#APKS[@]} -ne 1 ]]; then
-            echo "::error::Expected exactly one PhotoCraft APK; found ${§#APKS[@]}."
-            printf '%s\n' "${§APKS[@]}"
+          if [[ ${#APKS[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one PhotoCraft APK; found ${#APKS[@]}."
+            printf '%s\n' "${APKS[@]}"
             exit 1
           fi
           ASSET_NAME="PhotoCraft.apk"
@@ -217,7 +217,7 @@ jobs:
             [[ -n "$EXPECTED_CERT" ]] || { echo "::error::Expected certificate pin is missing."; exit 1; }
           fi
           mkdir -p "$GITHUB_WORKSPACE/release"
-          cp -- "${§APKS[0]}" "$GITHUB_WORKSPACE/release/$ASSET_NAME"
+          cp -- "${APKS[0]}" "$GITHUB_WORKSPACE/release/$ASSET_NAME"
           bash common/scripts/verify-apk.sh "$GITHUB_WORKSPACE/release/$ASSET_NAME" "com.artcraft.photocraft" "$EXPECTED_CERT"
           python3 - "$GITHUB_WORKSPACE/release/$ASSET_NAME" <<'PY'
           import sys, zipfile

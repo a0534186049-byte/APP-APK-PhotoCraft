@@ -1,0 +1,36 @@
+name: Build PhotoCraft Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "Release publishes the signed APK to the fixed GitHub Release; debug is for testing only"
+        required: true
+        type: choice
+        default: debug
+        options:
+          - debug
+          - release
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/**"
+      - ".github/workflows/build-android.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    uses: a0534186049-byte/ArtCraft-Android-Common/.github/workflows/build-android-app.yml@5b848c28408672cd358019d1346b3d71eae17494
+    with:
+      app: photocraft
+      common_ref: 5b848c28408672cd358019d1346b3d71eae17494
+      source_version: stable
+      build_mode: ${{ inputs.build_mode || 'debug' }}
+      builder_ref: 2a03bb11c4d08e8ca3a5c96dc9fd942cbe7c29a9
+    secrets:
+      ARTCRAFT_SIGNING_KEYSTORE_BASE64: ${{ secrets.ARTCRAFT_SIGNING_KEYSTORE_BASE64 }}
+      ARTCRAFT_SIGNING_PASSWORD: ${{ secrets.ARTCRAFT_SIGNING_PASSWORD }}
+      ARTCRAFT_EXPECTED_CERT_SHA256: ${{ secrets.ARTCRAFT_EXPECTED_CERT_SHA256 }}

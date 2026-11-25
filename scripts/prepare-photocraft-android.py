@@ -62,6 +62,87 @@ def main() -> None:
     if not template.is_file():
         fail(f"the pinned builder has no Android mobile text bar template: {template}")
 
+    # Keep Android rotation under the device user's rotation setting, not raw sensor rotation.
+    adapter_manifest = builder / "adapters/photocraft/Cargo.toml"
+    patch_once(
+        adapter_manifest,
+        'orientation = "sensor"',
+        'orientation = "user"',
+        "honor Android user rotation preference",
+    )
+
+    # The upstream app moved control_server.rs into craft-libs on 17 November.
+    # Keep the last PhotoCraft-owned implementation as an app-specific Android adapter fallback.
+    fallback_source = Path(__file__).resolve().parent.parent / "adapters/photocraft/src/control_server.rs"
+    staged_control = builder / "adapters/photocraft/src/control_server.rs"
+    if not fallback_source.is_file():
+        fail(f"PhotoCraft Android control-server compatibility source is missing: {fallback_source}")
+    fallback_text = fallback_source.read_text(encoding="utf-8")
+    staged_control.parent.mkdir(parents=True, exist_ok=True)
+    if staged_control.is_file():
+        if staged_control.read_text(encoding="utf-8") != fallback_text:
+            fail(f"refusing to overwrite a different builder control-server module: {staged_control}")
+        print("  Already staged: PhotoCraft Android control-server compatibility module")
+    else:
+        staged_control.write_text(fallback_text, encoding="utf-8")
+        print("  Staged: PhotoCraft Android control-server compatibility module")
+
+    prepare_script = builder / "adapters/photocraft/prepare.sh"
+    old_upstream_control = '''if not upstream.is_file():
+    raise SystemExit(
+        f"photocraft: upstream no longer has {upstream}; the Android control server has to be "
+        "adapted by hand"
+    )
+
+text = upstream.read_text()'''
+    compatible_control = '''if upstream.is_file():
+    text = upstream.read_text()
+elif target.is_file():
+    text = target.read_text()
+    print("photocraft: using the pinned PhotoCraft Android control-server compatibility module")
+else:
+    raise SystemExit(
+        f"photocraft: neither upstream nor the app-specific Android adapter provides {target}"
+    )'''
+    patch_once(
+        prepare_script,
+        old_upstream_control,
+        compatible_control,
+        "fall back to the PhotoCraft-owned Android control-server module after upstream relocation",
+    )
+
+    # When a second finger takes over a brush press, release the first pointer at its
+    # last known position. Otherwise a stroke can remain active during a two-finger pan.
+    touch_template = builder / "templates/android/touch_gestures.rs"
+    patch_once(
+        touch_template,
+        "                                cancel_pos = Some(*pos);",
+        "                                cancel_pos = state.fingers.values().next().map(|finger| finger.last_pos);",
+        "remember the first finger position when scroll or pinch takes over",
+    )
+    old_multi_touch_filter = '''    if is_multi_touch {
+        raw.events.retain(|event| !matches!(event, Event::PointerButton { .. }));
+    }'''
+    release_pointer_on_takeover = '''    if is_multi_touch {
+        raw.events.retain(|event| !matches!(event, Event::PointerButton { .. }));
+    }
+    if cancel_stroke {
+        if let Some(pos) = cancel_pos {
+            raw.events.push(Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::NONE,
+            });
+        }
+    }'''
+    patch_once(
+        touch_template,
+        old_multi_touch_filter,
+        release_pointer_on_takeover,
+        "release an active PhotoCraft brush stroke when a two-finger gesture takes over",
+    )
+
     original_actions = '''    let actions = [
         ("Cut", Action::Cut),
         ("Copy", Action::Copy),
@@ -101,6 +182,17 @@ def main() -> None:
     original_font = "                    FontId::proportional(12.5),"
     responsive_font = "                    FontId::proportional((btn_w * 0.19).clamp(9.0, 12.5)),"
     patch_once(template, original_font, responsive_font, "action label font scaling")
+
+    # Verify the app-specific Android compatibility patches as well as the narrow action bar.
+    control_server_source = staged_control.read_text(encoding="utf-8")
+    if "pub fn start(listener: TcpListener, token: String, ctx: egui::Context)" not in control_server_source:
+        fail("PhotoCraft Android control-server fallback does not expose the expected start API")
+    if 'orientation = "user"' not in adapter_manifest.read_text(encoding="utf-8"):
+        fail("PhotoCraft Android activity is not configured to honor the user's rotation preference")
+    touch_text = touch_template.read_text(encoding="utf-8")
+    for marker in ("button: egui::PointerButton::Primary", "pressed: false", "finger.last_pos"):
+        if marker not in touch_text:
+            fail(f"Android gesture hand-off verification did not find {marker!r}")
 
     final_text = template.read_text(encoding="utf-8")
     for marker in (

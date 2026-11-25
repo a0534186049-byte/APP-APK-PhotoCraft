@@ -61,6 +61,18 @@ def main() -> None:
     template = builder / "templates/android/mobile_text_bar.rs"
     if not template.is_file():
         fail(f"the pinned builder has no Android mobile text bar template: {template}")
+    # The pinned egui-winit fork destructures every PlatformOutput field explicitly.
+    # PhotoCraft pins a newer egui that added retired_ime_resets, so this vendor
+    # fork must ignore fields it does not consume to remain source-compatible.
+    egui_winit = builder / "vendor/egui-winit/src/lib.rs"
+    patch_once(
+        egui_winit,
+        "            request_discard_reasons: _, // `egui::Context::run` handles this\n        } = platform_output;",
+        "            request_discard_reasons: _, // `egui::Context::run` handles this\n"
+        "            .. // Ignore newer PlatformOutput fields unused by egui-winit.\n"
+        "        } = platform_output;",
+        "ignore newer unused egui PlatformOutput fields",
+    )
 
     # Keep Android rotation under the device user's rotation setting, not raw sensor rotation.
     adapter_manifest = builder / "adapters/photocraft/Cargo.toml"
@@ -200,6 +212,8 @@ else:
         fail("PhotoCraft Android activity is not configured to honor the user's rotation preference")
     if 'photocraft-codecs = { workspace = true }' not in adapter_manifest.read_text(encoding="utf-8"):
         fail("PhotoCraft Android adapter still points to the removed local codecs crate")
+    if "Ignore newer PlatformOutput fields unused by egui-winit." not in egui_winit.read_text(encoding="utf-8"):
+        fail("egui-winit PlatformOutput destructuring is not forward-compatible")
     touch_text = touch_template.read_text(encoding="utf-8")
     for marker in ("button: egui::PointerButton::Primary", "pressed: false", "finger.last_pos"):
         if marker not in touch_text:

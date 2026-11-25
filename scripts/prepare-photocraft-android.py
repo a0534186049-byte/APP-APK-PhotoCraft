@@ -21,13 +21,13 @@ def patch_once(path: Path, old: str, new: str, label: str) -> bool:
     text = path.read_text(encoding="utf-8")
     old_count = text.count(old)
     new_count = text.count(new)
+    if new_count == 1:
+        print(f"  Already applied: {label}")
+        return False
     if old_count == 1 and new_count == 0:
         path.write_text(text.replace(old, new, 1), encoding="utf-8")
         print(f"  Applied: {label}")
         return True
-    if old_count == 0 and new_count == 1:
-        print(f"  Already applied: {label}")
-        return False
     fail(
         f"{label}: expected exactly one original or patched block "
         f"(original={old_count}, patched={new_count}) in {path}"

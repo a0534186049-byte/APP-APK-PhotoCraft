@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Apply PhotoCraft-only Android polish to the pinned source and builder checkout.
+"""Apply PhotoCraft-only Android compatibility patches to the pinned source and builder checkout.
 
-This patcher deliberately does not copy or modify WordCraft/GridCraft application code.
-It edits only the pinned PhotoCraft build's Android text-action bar template.
+This patcher does not copy or modify WordCraft/GridCraft application code. It fixes
+PhotoCraft Builder integration, Android gesture hand-off, and the mobile text-action bar.
 """
 from __future__ import annotations
 
@@ -69,6 +69,15 @@ def main() -> None:
         'orientation = "sensor"',
         'orientation = "user"',
         "honor Android user rotation preference",
+    )
+    # The pinned PhotoCraft workspace moved image codecs into craft-libs. The
+    # Builder adapter still points at the removed local crates/codecs directory.
+    # Resolve the dependency through the workspace alias defined by PhotoCraft.
+    patch_once(
+        adapter_manifest,
+        'photocraft-codecs = { path = "../../crates/codecs" }',
+        'photocraft-codecs = { workspace = true }',
+        "use the workspace shared image-codecs dependency",
     )
 
     # The upstream app moved control_server.rs into craft-libs on 17 November.
@@ -189,6 +198,8 @@ else:
         fail("PhotoCraft Android control-server fallback does not expose the expected start API")
     if 'orientation = "user"' not in adapter_manifest.read_text(encoding="utf-8"):
         fail("PhotoCraft Android activity is not configured to honor the user's rotation preference")
+    if 'photocraft-codecs = { workspace = true }' not in adapter_manifest.read_text(encoding="utf-8"):
+        fail("PhotoCraft Android adapter still points to the removed local codecs crate")
     touch_text = touch_template.read_text(encoding="utf-8")
     for marker in ("button: egui::PointerButton::Primary", "pressed: false", "finger.last_pos"):
         if marker not in touch_text:

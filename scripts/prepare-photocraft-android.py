@@ -34,6 +34,21 @@ def patch_once(path: Path, old: str, new: str, label: str) -> bool:
     )
 
 
+def replace_regex_once(path: Path, pattern: str, replacement: str, marker: str, label: str) -> bool:
+    if not path.is_file():
+        fail(f"required file is missing: {path}")
+    text = path.read_text(encoding="utf-8")
+    if marker in text:
+        print(f"  Already applied: {label}")
+        return False
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.DOTALL)
+    if count != 1:
+        fail(f"{label}: expected exactly one original block in {path}, found {count}")
+    path.write_text(updated, encoding="utf-8")
+    print(f"  Applied: {label}")
+    return True
+
+
 def main() -> None:
     if len(sys.argv) != 3:
         fail("usage: prepare-photocraft-android.py <source-dir> <builder-root>")
@@ -131,6 +146,166 @@ else:
         compatible_control,
         "fall back to the PhotoCraft-owned Android control-server module after upstream relocation",
     )
+
+
+    # The current PhotoCraft host uses craft::host::Files, not the retired browser-only
+    # FileDialogReply callback. Install the Android SAF-backed implementation for this app.
+    app_adapter = builder / "adapters/photocraft/src/lib.rs"
+    android_files_source = Path(__file__).resolve().parent.parent / "adapters/photocraft/src/android_files.rs"
+    staged_android_files = builder / "adapters/photocraft/src/android_files.rs"
+    if not android_files_source.is_file():
+        fail(f"PhotoCraft Android Files adapter is missing: {android_files_source}")
+    files_text = android_files_source.read_text(encoding="utf-8")
+    staged_android_files.parent.mkdir(parents=True, exist_ok=True)
+    if staged_android_files.is_file():
+        if staged_android_files.read_text(encoding="utf-8") != files_text:
+            fail(f"refusing to overwrite a different Android Files adapter: {staged_android_files}")
+        print("  Already staged: Android SAF Files service")
+    else:
+        staged_android_files.write_text(files_text, encoding="utf-8")
+        print("  Staged: Android SAF Files service")
+
+    patch_once(
+        app_adapter,
+        "use photocraft_ui_egui::{\n    FileDialogAnswer, FileDialogReply, FileDialogRequest, Inbox, PhotocraftApp, Recoverable,\n    Services,\n};",
+        "use photocraft_ui_egui::{Inbox, PhotocraftApp, Recoverable, Services};\nuse android_files::AndroidFiles;",
+        "use the current PhotoCraft host file service API",
+    )
+    patch_once(
+        app_adapter,
+        "mod control_server;\n",
+        "mod control_server;\nmod android_files;\n",
+        "include the PhotoCraft Android SAF Files module",
+    )
+    patch_once(
+        app_adapter,
+        "use std::sync::atomic::{AtomicU64, Ordering};",
+        "use std::sync::atomic::Ordering;",
+        "remove obsolete Android picker counter import",
+    )
+    replace_regex_once(
+        app_adapter,
+        r"(?s)#\[derive\(Default\)\]\nstruct PickerState \{.*?\n\}\n\n(?=fn write_mobile)",
+        "// Android SAF picker implementation using the current craft::host::Files API.\n\n",
+        "Android SAF picker implementation using the current craft::host::Files API",
+        "replace the obsolete callback-based picker with the current Files service",
+    )
+    patch_once(
+        app_adapter,
+        "fn services(bridge: AndroidFileBridge, picker: Arc<PickerState>, prefs_path: PathBuf, inbox: Inbox) -> Services {",
+        "fn services(bridge: AndroidFileBridge, files: AndroidFiles, prefs_path: PathBuf, inbox: Inbox) -> Services {",
+        "accept the new Android Files service in PhotoCraft services",
+    )
+    patch_once(
+        app_adapter,
+        "    let prefs_bridge = bridge.clone_for_services();\n    let load_prefs_path = prefs_path.clone();\n",
+        "",
+        "remove the retired JSON preference callbacks",
+    )
+    patch_once(
+        app_adapter,
+        "    Services {\n        // Files the system asked us to open",
+        "    Services {\n        files: Some(Arc::new(files.clone())),\n        settings: Some(craft::settings::SettingsStore::open_with(\n            photocraft_engine::prefs::store_options(prefs_path.parent()),\n        )),\n        // Files the system asked us to open",
+        "connect Android SAF and the current persistent settings store",
+    )
+    patch_once(
+        app_adapter,
+        "        file_dialog: Some(Box::new(move |request, _parent, reply| {\n            picker.launch(&bridge, request, reply);\n        })),\n",
+        "",
+        "remove the obsolete browser-only file dialog callback",
+    )
+    patch_once(
+        app_adapter,
+        "        system_theme: Some(Box::new(|_ctx| egui_winit::system_theme::system_theme())),\n",
+        "",
+        "remove the removed system-theme Services field",
+    )
+    patch_once(
+        app_adapter,
+        "        load_prefs: Some(Box::new(move || fs::read_to_string(&load_prefs_path).ok())),\n        save_prefs: Some(Box::new(move |text: &str| {\n            write_mobile(\n                &prefs_bridge,\n                &prefs_path.to_string_lossy(),\n                text.as_bytes(),\n            )\n        })),\n",
+        "",
+        "use PhotoCraft SettingsStore instead of the removed JSON preference callbacks",
+    )
+    replace_regex_once(
+        app_adapter,
+        r"(?s)        encode_png: Some\(Box::new\(\|w, h, rgba\| \{.*?\n        \}\)\),\n",
+        "",
+        "encode_png: Some",
+        "remove the obsolete encode_png service field",
+    )
+    patch_once(
+        app_adapter,
+        "    inner: PhotocraftApp,\n    bridge: AndroidFileBridge,\n    picker: Arc<PickerState>,",
+        "    inner: Box<PhotocraftApp>,\n    bridge: AndroidFileBridge,\n    files: AndroidFiles,",
+        "match PhotoCraft's boxed app and retain the SAF Files service",
+    )
+    patch_once(
+        app_adapter,
+        "        let current: Vec<String> = self.inner.ui.recent_files.clone();",
+        "        let current: Vec<String> = self.inner.ui.recent_files.to_vec();",
+        "read tracked recent file paths through the current API",
+    )
+    patch_once(
+        app_adapter,
+        "        self.picker.poll(&self.bridge, ctx);",
+        "        self.files.poll(&self.bridge, ctx);",
+        "poll Android SAF through the current Files service",
+    )
+    replace_regex_once(
+        app_adapter,
+        r"(?s)\n        // Sync appearance when system theme changes if set to Auto\n        if self\.inner\.session\.prefs\(\)\.interface\.appearance_mode == photocraft_engine::prefs::AppearanceMode::Auto \{.*?\n        \}\n        self\.inner\.logic",
+        "\n        self.inner.logic",
+        "// PhotoCraft derives the active theme from the current AppTheme/preferences API.",
+        "remove the obsolete ThemeKind/system-theme adapter block",
+    )
+    patch_once(
+        app_adapter,
+        "            let initial_theme = if egui_winit::system_theme::system_theme() == Some(egui::Theme::Light) {\n                photocraft_ui_egui::theme::ThemeKind::ProLight\n            } else {\n                photocraft_ui_egui::theme::ThemeKind::Pro\n            };",
+        "            let initial_theme = photocraft_ui_egui::theme::AppTheme::default();",
+        "initialize PhotoCraft with its current AppTheme type",
+    )
+    patch_once(
+        app_adapter,
+        "    let picker = Arc::new(PickerState::default());",
+        "    let files = AndroidFiles::default();",
+        "create the Android SAF Files service",
+    )
+    patch_once(
+        app_adapter,
+        "    let app_picker = picker.clone();",
+        "    let app_files = files.clone();",
+        "share the Android SAF Files service with the app closure",
+    )
+    patch_once(
+        app_adapter,
+        "                    app_picker.clone(),",
+        "                    app_files.clone(),",
+        "pass the Android SAF Files service into PhotoCraft",
+    )
+    patch_once(
+        app_adapter,
+        "                picker: app_picker.clone(),",
+        "                files: app_files.clone(),",
+        "store the Android SAF Files service in the app shell",
+    )
+
+    # The Android adapter is its own crate; add the workspace facade as a direct dependency.
+    adapter_manifest = builder / "adapters/photocraft/Cargo.toml"
+    adapter_manifest_text = adapter_manifest.read_text(encoding="utf-8")
+    if 'craft = { workspace = true }' not in adapter_manifest_text:
+        patch_once(
+            adapter_manifest,
+            "[dependencies]\n",
+            "[dependencies]\ncraft = { workspace = true }\n",
+            "add the current craft host/settings API to the Android adapter",
+        )
+
+    patched_adapter = app_adapter.read_text(encoding="utf-8")
+    for stale in ("FileDialogAnswer", "FileDialogReply", "FileDialogRequest", "PickerState", "ThemeKind", "file_dialog:", "system_theme:", "load_prefs:", "save_prefs:", "encode_png:"):
+        if stale in patched_adapter:
+            fail(f"the Android adapter still contains a retired PhotoCraft API: {stale}")
+    if "files: Some(Arc::new(files.clone()))" not in patched_adapter or "SettingsStore::open_with" not in patched_adapter:
+        fail("the current PhotoCraft Files or persistent settings service was not installed")
 
     # When a second finger takes over a brush press, release the first pointer at its
     # last known position. Otherwise a stroke can remain active during a two-finger pan.

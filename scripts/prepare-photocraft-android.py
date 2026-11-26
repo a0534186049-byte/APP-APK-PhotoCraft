@@ -254,7 +254,7 @@ else:
     replace_regex_once(
         app_adapter,
         r"(?s)\n        // Sync appearance when system theme changes if set to Auto\n        if self\.inner\.session\.prefs\(\)\.interface\.appearance_mode == photocraft_engine::prefs::AppearanceMode::Auto \{.*?\n        \}\n        self\.inner\.logic",
-        "\n        self.inner.logic",
+        "\n        // PhotoCraft derives the active theme from the current AppTheme/preferences API.\n        self.inner.logic",
         "// PhotoCraft derives the active theme from the current AppTheme/preferences API.",
         "remove the obsolete ThemeKind/system-theme adapter block",
     )

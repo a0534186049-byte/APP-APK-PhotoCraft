@@ -199,7 +199,7 @@ else:
     patch_once(
         app_adapter,
         "    let prefs_bridge = bridge.clone_for_services();\n    let load_prefs_path = prefs_path.clone();\n",
-        "",
+        "    // Preferences now persist through PhotoCraft's SettingsStore service.\n",
         "remove the retired JSON preference callbacks",
     )
     patch_once(
@@ -211,19 +211,19 @@ else:
     patch_once(
         app_adapter,
         "        file_dialog: Some(Box::new(move |request, _parent, reply| {\n            picker.launch(&bridge, request, reply);\n        })),\n",
-        "",
+        "        // Android file picks are served through craft::host::Files.\n",
         "remove the obsolete browser-only file dialog callback",
     )
     patch_once(
         app_adapter,
         "        system_theme: Some(Box::new(|_ctx| egui_winit::system_theme::system_theme())),\n",
-        "",
+        "        // The current PhotoCraft AppTheme handles appearance selection.\n",
         "remove the removed system-theme Services field",
     )
     patch_once(
         app_adapter,
         "        load_prefs: Some(Box::new(move || fs::read_to_string(&load_prefs_path).ok())),\n        save_prefs: Some(Box::new(move |text: &str| {\n            write_mobile(\n                &prefs_bridge,\n                &prefs_path.to_string_lossy(),\n                text.as_bytes(),\n            )\n        })),\n",
-        "",
+        "        // Preference loading/saving is owned by SettingsStore now.\n",
         "use PhotoCraft SettingsStore instead of the removed JSON preference callbacks",
     )
     replace_regex_once(

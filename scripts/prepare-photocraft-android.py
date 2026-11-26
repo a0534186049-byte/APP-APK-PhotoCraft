@@ -20,7 +20,7 @@ def patch_once(path: Path, old: str, new: str, label: str) -> bool:
         fail(f"required file is missing: {path}")
     text = path.read_text(encoding="utf-8")
     old_count = text.count(old)
-    new_count = text.count(new)
+    new_count = text.count(new) if new else 0
     if new_count == 1:
         print(f"  Already applied: {label}")
         return False

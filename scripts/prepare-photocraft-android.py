@@ -229,8 +229,8 @@ else:
     replace_regex_once(
         app_adapter,
         r"(?s)        encode_png: Some\(Box::new\(\|w, h, rgba\| \{.*?\n        \}\)\),\n",
-        "",
-        "encode_png: Some",
+        "        // PNG encoding is provided by photocraft-io in the current API.\n",
+        "        // PNG encoding is provided by photocraft-io in the current API.",
         "remove the obsolete encode_png service field",
     )
     patch_once(
